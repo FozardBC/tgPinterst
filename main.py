@@ -1,6 +1,6 @@
 import os
 import instaloader
-from telegram import Update
+from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from pathlib import Path
 import shutil
@@ -13,8 +13,6 @@ TELEGRAM_BOT_TOKEN = "7851957608:AAHasR95vqt_Vg7_ZZKQEXq4Nl6D8tq6Wlc"
 
 # ID канала, куда будет отправляться контент
 TELEGRAM_CHANNEL_ID = "-1002324153744"
-
-
 
 # Функция для скачивания контента из поста Instagram
 def download_instagram_post(post_url):
@@ -31,23 +29,13 @@ def download_instagram_post(post_url):
         L.download_post(post, target='instagram_post')
         print(f"Контент скачан: {post.url}")  # Логирование
 
-        # Возвращаем путь к скачанному файлу
-        if post.is_video:
-            # Очищаем имя файла от недопустимых символов
-            file_name = post.video_url.split("/")[-1].split("?")[0]
-            print(file_name)
-            return f"instagram_post/{file_name}"
-        else:
-            # Очищаем имя файла от недопустимых символов
-            file_name = post.url.split("/")[-1].split("?")[0]
-            return f"instagram_post/{file_name}"
+        # Возвращаем True, если скачивание прошло успешно
+        return True
     except Exception as e:
         print(f"Ошибка при скачивании контента: {e}")  # Логирование
-        return None
+        return False
 
-# Команда /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Отправь мне ссылку на пост Instagram, и я отправлю его контент в канал.")
+# Функция для поиска всех файлов с расширениями .jpg и .mp4 в папке
 def find_files_in_directory(directory_path):
     files = []
     for file_name in os.listdir(directory_path):
@@ -98,18 +86,24 @@ async def handle_instagram_link(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text("Контент не найден в папке.")
             return
 
-        # Отправляем каждый файл в канал
+        # Создаем media_group для отправки
+        media_group = []
         for file_path in files:
             try:
                 with open(file_path, "rb") as file:
                     if file_path.endswith(".mp4"):
-                        await context.bot.send_video(chat_id=TELEGRAM_CHANNEL_ID, video=file)
+                        media_group.append(InputMediaVideo(media=file))
                     elif file_path.endswith(".jpg"):
-                        await context.bot.send_photo(chat_id=TELEGRAM_CHANNEL_ID, photo=file)
+                        media_group.append(InputMediaPhoto(media=file))
             except Exception as e:
-                await update.message.reply_text(f"Ошибка при отправке файла {file_path}: {e}")
+                await update.message.reply_text(f"Ошибка при обработке файла {file_path}: {e}")
 
-        await update.message.reply_text("Контент успешно отправлен в канал!")
+        # Отправляем media_group в канал
+        try:
+            await context.bot.send_media_group(chat_id=TELEGRAM_CHANNEL_ID, media=media_group)
+            await update.message.reply_text("Контент успешно отправлен в канал!")
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка при отправке media_group: {e}")
 
         # Удаляем все файлы из папки
         clear_directory("instagram_post")
